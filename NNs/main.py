@@ -1,81 +1,117 @@
-import torch
-# from torchvision import datasets, transforms
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
+# Import necessary libraries
+from keras.datasets import mnist
+from keras.models import Sequential
+from keras.layers import Dense, Dropout, Flatten
+from keras.layers import Conv2D, MaxPooling2D
+from keras.utils import to_categorical
+import numpy as np
+import tensorflow as tf
+from PIL import Image, ImageTk
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import filedialog
 
-# Define a simple neural network model
-class NeuralNet(nn.Module):
-    def __init__(self):
-        super(Net, self).__init__()
-        self.fc1 = nn.Linear(784, 128)  # input layer (28x28 images) -> hidden layer (128 units)
-        self.fc2 = nn.Linear(128, 10)  # hidden layer (128 units) -> output layer (10 units)
+# Create the Tkinter window
+window = tk.Tk()
+window.title("MNIST Digit Recognition")
 
-    def forward(self, x):
-        x = torch.relu(self.fc1(x))  # activation function for hidden layer
-        x = self.fc2(x)
-        return x
 
-# Define a custom dataset class for our data
-class MyDataset(Dataset):
-    def __init__(self, data, labels):
-        self.data = data
-        self.labels = labels
+# Create the model architecture
+model = Sequential()
+model.add(Conv2D(32, (3, 3), activation='relu', input_shape=(28, 28, 1)))
+model.add(MaxPooling2D((2, 2)))
+model.add(Flatten())
+model.add(Dense(128, activation='relu'))
+model.add(Dropout(0.2))
+model.add(Dense(10, activation='softmax'))
 
-    def __len__(self):
-        return len(self.data)
+# Load the MNIST dataset
+(x_train, y_train), (x_test, y_test) = mnist.load_data()
 
-    def __getitem__(self, index):
-        return self.data[index], self.labels[index]
+# Reshape the input data
+x_train = x_train.reshape(x_train.shape[0], 28, 28, 1)
+x_test = x_test.reshape(x_test.shape[0], 28, 28, 1)
 
-# Load MNIST dataset (you can replace this with your own dataset)
-transform = transforms.Compose([transforms.ToTensor()])
-trainset = datasets.MNIST('~/.pytorch/MNIST_data/', download=True, train=True, transform=transform)
-trainloader = DataLoader(MyDataset(trainset.data, trainset.targets), batch_size=64, shuffle=True)
+# Normalize the input data
+x_train = x_train.astype('float32') / 255
+x_test = x_test.astype('float32') / 255
 
-# Set up the model, loss function, and optimizer
-model = NeuralNet()
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(model.parameters(), lr=0.01)
+# Convert class vectors to binary class matrices
+y_train = to_categorical(y_train, 10)
+y_test = to_categorical(y_test, 10)
 
-# Define a function to train the model
-def train_model():
-    for epoch in range(10):  # loop over the dataset multiple times
-        running_loss = 0.0
-        for i, data in enumerate(trainloader, 0):
-            inputs, labels = data
-            optimizer.zero_grad()
-            outputs = model(inputs.view(-1, 784))  # flatten the input data
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-            running_loss += loss.item()
-        print('Epoch %d, loss = %.3f' % (epoch+1, running_loss/(i+1)))
+# Compile the model
+model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
 
-# Define a function to save the model
+
+# Define the load_model_from_file function
+def load_model_from_file():
+    try:
+        file_path = filedialog.askopenfilename()
+        global model
+        model = tf.keras.models.load_model(file_path)
+    except Exception as e:
+        print(f"Error loading model: {e}")
+
 def save_model():
-    torch.save(model.state_dict(), 'model.pth')
-    messagebox.showinfo("Model Saved", "Model saved to model.pth")
+    try:
+        file_path = filedialog.asksaveasfilename()
+        model.save(file_path)
+    except Exception as e:
+        print(f"Error saving model: {e}")
 
-# Define a function to load the model
-def load_model():
-    model.load_state_dict(torch.load('model.pth', map_location=torch.device('cpu')))
-    messagebox.showinfo("Model Loaded", "Model loaded from model.pth")
+# Define the train_model function
+def train_model():
+    try:
+        for epoch in range(10):
+            model.fit(x_train, y_train, batch_size=128, epochs=1, validation_data=(x_test, y_test))
+            training_progress_label.config(text=f"Epoch {epoch+1}/10")
+            window.update()
+        training_progress_label.config(text="Training complete!")
+    except Exception as e:
+        print(f"Error training model: {e}")
 
-# Create the Tkinter interface
-root = tk.Tk()
-root.title("Neural Network")
+# Define the test_model function
+def test_model():
+    try:
+        image_path = filedialog.askopenfilename()
+        image = Image.open(image_path)
+        image = image.resize((28, 28))
+        image = np.array(image)
+        image = image.reshape((1, 28, 28, 1))
+        image = image.astype('float32') / 255
+        prediction = model.predict(image)
+        prediction_label.config(text=np.argmax(prediction))
+        image_canvas.delete("all")
+        image_tk = ImageTk.PhotoImage(Image.fromarray(image[0, :, :, 0]))
+        image_canvas.create_image(0, 0, image=image_tk, anchor='nw')
+        image_canvas.image = image_tk  # Keep a reference to the image
+    except Exception as e:
+        print(f"Error testing model: {e}")
 
-# Create buttons to train, save, and load the model
-train_button = tk.Button(root, text="Train Model", command=train_model)
+
+# Create the Tkinter buttons
+load_button = tk.Button(window, text="Load Model", command=load_model_from_file)
+train_button = tk.Button(window, text="Train Model", command=train_model)
+test_button = tk.Button(window, text="Test Model", command=test_model)
+save_button = tk.Button(window, text="Save Model", command=save_model)
+
+# Pack the buttons into the window
+load_button.pack()
 train_button.pack()
-
-save_button = tk.Button(root, text="Save Model", command=save_model)
+test_button.pack()
 save_button.pack()
 
-load_button = tk.Button(root, text="Load Model", command=load_model)
-load_button.pack()
+# Create the Tkinter image canvas
+image_canvas = tk.Canvas(window, width=280, height=280)
+image_canvas.pack()
 
-root.mainloop()
+# Create the Tkinter prediction label
+prediction_label = tk.Label(window, text="")
+prediction_label.pack()
+
+# Create the Tkinter training progress label
+training_progress_label = tk.Label(window, text="")
+training_progress_label.pack()
+
+# Start the Tkinter event loop
+window.mainloop()
