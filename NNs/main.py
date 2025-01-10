@@ -9,6 +9,8 @@ import tensorflow as tf
 from PIL import Image, ImageTk
 import tkinter as tk
 from tkinter import filedialog
+import tkinter.ttk as ttk
+import os
 
 # Create the Tkinter window
 window = tk.Tk()
@@ -46,11 +48,14 @@ model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accur
 # Define the load_model_from_file function
 def load_model_from_file():
     try:
-        file_path = filedialog.askopenfilename()
+        folder_path = filedialog.askdirectory()
         global model
-        model = tf.keras.models.load_model(file_path)
+        model = tf.keras.models.load_model(folder_path)
+        model_name = os.path.basename(folder_path)
+        model_name_label.config(text=f"Model loaded: {model_name}")
     except Exception as e:
         print(f"Error loading model: {e}")
+        model_name_label.config(text="Error loading model")
 
 def save_model():
     try:
@@ -59,35 +64,62 @@ def save_model():
     except Exception as e:
         print(f"Error saving model: {e}")
 
+
 # Define the train_model function
 def train_model():
     try:
-        for epoch in range(10):
-            model.fit(x_train, y_train, batch_size=128, epochs=1, validation_data=(x_test, y_test))
-            training_progress_label.config(text=f"Epoch {epoch+1}/10")
+        global model
+        if not model:
+            model_name = model_name_entry.get()
+            if not model_name:
+                model_name = "untitled"
+            model = Sequential()
+            model.add(Conv2D(32, (3, 3), activation='relu', input_shape=(28, 28, 1)))
+            model.add(MaxPooling2D((2, 2)))
+            model.add(Flatten())
+            model.add(Dense(128, activation='relu'))
+            model.add(Dropout(0.2))
+            model.add(Dense(10, activation='softmax'))
+            model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+        epochs = int(epochs_entry.get())
+        for epoch in range(epochs):
+            model.fit(x_train, y_train, batch_size=128, epochs=1, validation_data=(x_test, y_test), verbose=0)
+            progress_bar['value'] = (epoch + 1) / epochs * 100
+            epoch_label['text'] = f"Epochs: {epoch + 1}/{epochs}"
             window.update()
-        training_progress_label.config(text="Training complete!")
+        progress_bar['value'] = 0
+        epoch_label['text'] = "Epochs: 0/10"
+        model_name_label.config(text=f"Model loaded: {model_name}")
     except Exception as e:
         print(f"Error training model: {e}")
+
 
 # Define the test_model function
 def test_model():
     try:
         image_path = filedialog.askopenfilename()
         image = Image.open(image_path)
-        image = image.resize((28, 28))
+        image = image.resize((28, 28))  # Resize the image to 28x28
+        image = image.convert('L')  # Convert the image to grayscale
         image = np.array(image)
-        image = image.reshape((1, 28, 28, 1))
-        image = image.astype('float32') / 255
+        image = image.reshape((1, 28, 28, 1))  # Reshape the image to the correct dimensions
+        image = image.astype('float32') / 255  # Normalize the image data
         prediction = model.predict(image)
         prediction_label.config(text=np.argmax(prediction))
         image_canvas.delete("all")
         image_tk = ImageTk.PhotoImage(Image.fromarray(image[0, :, :, 0]))
         image_canvas.create_image(0, 0, image=image_tk, anchor='nw')
         image_canvas.image = image_tk  # Keep a reference to the image
+        print(f"Predicted digit: {np.argmax(prediction)}")
     except Exception as e:
         print(f"Error testing model: {e}")
 
+
+# Create the Tkinter model name entry
+model_name_label = tk.Label(window, text="Model Name:")
+model_name_label.pack()
+model_name_entry = tk.Entry(window)
+model_name_entry.pack()
 
 # Create the Tkinter buttons
 load_button = tk.Button(window, text="Load Model", command=load_model_from_file)
@@ -109,9 +141,20 @@ image_canvas.pack()
 prediction_label = tk.Label(window, text="")
 prediction_label.pack()
 
-# Create the Tkinter training progress label
-training_progress_label = tk.Label(window, text="")
-training_progress_label.pack()
+# Create the Tkinter epochs entry
+epochs_label = tk.Label(window, text="Epochs:")
+epochs_label.pack()
+epochs_entry = tk.Entry(window)
+epochs_entry.insert(0, "10")
+epochs_entry.pack()
+
+# Create the Tkinter progress bar
+progress_bar = ttk.Progressbar(window, orient='horizontal', length=200, mode='determinate')
+progress_bar.pack()
+
+# Create the Tkinter epoch label
+epoch_label = tk.Label(window, text="Epochs: 0/10")
+epoch_label.pack()
 
 # Start the Tkinter event loop
 window.mainloop()
