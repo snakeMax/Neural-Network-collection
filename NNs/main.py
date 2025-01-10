@@ -11,6 +11,8 @@ import tkinter as tk
 from tkinter import filedialog
 import tkinter.ttk as ttk
 import os
+import threading
+from keras.layers import BatchNormalization
 
 # Create the Tkinter window
 window = tk.Tk()
@@ -20,10 +22,13 @@ window.title("MNIST Digit Recognition")
 # Create the model architecture
 model = Sequential()
 model.add(Conv2D(32, (3, 3), activation='relu', input_shape=(28, 28, 1)))
+model.add(BatchNormalization())
+model.add(Conv2D(64, (3, 3), activation='relu'))
+model.add(BatchNormalization())
 model.add(MaxPooling2D((2, 2)))
 model.add(Flatten())
 model.add(Dense(128, activation='relu'))
-model.add(Dropout(0.2))
+model.add(BatchNormalization())
 model.add(Dense(10, activation='softmax'))
 
 # Load the MNIST dataset
@@ -42,7 +47,7 @@ y_train = to_categorical(y_train, 10)
 y_test = to_categorical(y_test, 10)
 
 # Compile the model
-model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
 
 # Define the load_model_from_file function
@@ -68,11 +73,12 @@ def save_model():
 # Define the train_model function
 def train_model():
     try:
+        epochs = int(epochs_entry.get())
         global model
+        model_name = model_name_entry.get()
+        if not model_name:
+            model_name = "untitled"
         if not model:
-            model_name = model_name_entry.get()
-            if not model_name:
-                model_name = "untitled"
             model = Sequential()
             model.add(Conv2D(32, (3, 3), activation='relu', input_shape=(28, 28, 1)))
             model.add(MaxPooling2D((2, 2)))
@@ -81,17 +87,42 @@ def train_model():
             model.add(Dropout(0.2))
             model.add(Dense(10, activation='softmax'))
             model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
-        epochs = int(epochs_entry.get())
-        for epoch in range(epochs):
-            model.fit(x_train, y_train, batch_size=128, epochs=1, validation_data=(x_test, y_test), verbose=0)
-            progress_bar['value'] = (epoch + 1) / epochs * 100
-            epoch_label['text'] = f"Epochs: {epoch + 1}/{epochs}"
-            window.update()
-        progress_bar['value'] = 0
-        epoch_label['text'] = "Epochs: 0/10"
-        model_name_label.config(text=f"Model loaded: {model_name}")
+        stop_training = threading.Event()
+        def train_model_thread(model_name, stop_training):
+            epoch_label['text'] = f"Epochs: 0/{epochs}"
+            try:
+                for epoch in range(epochs):
+                    if stop_training.is_set():
+                        break
+                    model.fit(x_train, y_train, batch_size=128, epochs=1, validation_data=(x_test, y_test), verbose=0, 
+                              callbacks=[EpochCallback(epoch, epochs)])
+                    progress_bar['value'] = 0
+                    epoch_label['text'] = f"Epochs: {epoch + 1}/{epochs}"
+                    window.update()
+                model_name_label.config(text=f"Model loaded: {model_name}")
+                interrupt_button.pack_forget()  # Remove the interrupt button from the window
+            except Exception as e:
+                print(f"Error training model: {e}")
+        interrupt_button = tk.Button(window, text="Interrupt Training", command=stop_training.set)
+        interrupt_button.pack()
+        thread = threading.Thread(target=train_model_thread, args=(model_name, stop_training))
+        thread.start()
     except Exception as e:
         print(f"Error training model: {e}")
+
+class EpochCallback(tf.keras.callbacks.Callback):
+    def __init__(self, epoch, epochs):
+        self.epoch = epoch
+        self.epochs = epochs
+        self.batch_count = 0
+        self.batch_size = 128
+        self.total_batches = len(x_train) // self.batch_size
+
+    def on_batch_end(self, batch, logs=None):
+        self.batch_count += 1
+        progress = (self.batch_count / self.total_batches) * 100
+        progress_bar['value'] = progress
+        window.update()
 
 
 # Define the test_model function
@@ -105,9 +136,13 @@ def test_model():
         image = image.reshape((1, 28, 28, 1))  # Reshape the image to the correct dimensions
         image = image.astype('float32') / 255  # Normalize the image data
         prediction = model.predict(image)
-        prediction_label.config(text=np.argmax(prediction))
+        prediction_label.config(text="Prediction: " + str(np.argmax(prediction)))
         image_canvas.delete("all")
-        image_tk = ImageTk.PhotoImage(Image.fromarray(image[0, :, :, 0]))
+        resized_image = image[0, :, :, 0].astype('float32') * 255  # Normalize the image data to a range of 0 to 255
+        resized_image = resized_image.astype(np.uint8)  # Convert the image to uint8
+        resized_image = Image.fromarray(resized_image)  # Convert the image to a PIL image
+        resized_image = resized_image.resize((280, 280))  # Resize the image to 280x280
+        image_tk = ImageTk.PhotoImage(resized_image)
         image_canvas.create_image(0, 0, image=image_tk, anchor='nw')
         image_canvas.image = image_tk  # Keep a reference to the image
         print(f"Predicted digit: {np.argmax(prediction)}")
@@ -153,8 +188,9 @@ progress_bar = ttk.Progressbar(window, orient='horizontal', length=200, mode='de
 progress_bar.pack()
 
 # Create the Tkinter epoch label
-epoch_label = tk.Label(window, text="Epochs: 0/10")
+epoch_label = tk.Label(window, text="Epochs: 0")
 epoch_label.pack()
+
 
 # Start the Tkinter event loop
 window.mainloop()
