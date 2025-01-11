@@ -137,16 +137,14 @@ class EpochCallback(tf.keras.callbacks.Callback):
         self.batch_count += 1
         progress = (self.batch_count / self.total_batches) * 100
         progress_bar['value'] = progress
-        self.update_progress_bar()
-
-    def update_progress_bar(self):
-        window.update_idletasks()  # Update the progress bar
+        progress_bar.update_idletasks()  # Update the progress bar
 
     def on_epoch_end(self, epoch, logs=None):
         self.epoch += 1
         epoch_label['text'] = f"Epochs: {self.epoch}/{self.epochs}"
         progress_bar['value'] = 0  # Reset the progress bar to 0
-        self.update_progress_bar()
+        progress_bar.update_idletasks()  # Update the progress bar
+        self.batch_count = 0  # Reset the batch count
 
 
 # Define the test_model function
