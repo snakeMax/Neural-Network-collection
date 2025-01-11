@@ -13,6 +13,7 @@ import tkinter.ttk as ttk
 import os
 import threading
 from keras.layers import BatchNormalization
+import pickle
 
 # Create the Tkinter window
 window = tk.Tk()
@@ -31,7 +32,8 @@ model.add(Dense(128, activation='relu'))
 model.add(BatchNormalization())
 model.add(Dense(10, activation='softmax'))
 
-# Load the MNIST dataset
+
+# Load the MNIST datasets
 (x_train, y_train), (x_test, y_test) = mnist.load_data()
 
 # Reshape the input data
@@ -54,10 +56,21 @@ model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accur
 def load_model_from_file():
     try:
         folder_path = filedialog.askdirectory()
-        global model
-        model = tf.keras.models.load_model(folder_path)
-        model_name = os.path.basename(folder_path)
-        model_name_label.config(text=f"Model loaded: {model_name}")
+        if folder_path:
+            global model
+            model = tf.keras.models.load_model(folder_path)
+            model_name = os.path.basename(folder_path)
+            model_name_label.config(text=f"Model loaded: {model_name}")
+            model_name_entry.delete(0, tk.END)
+            model_name_entry.insert(0, model_name)
+            model_name_entry.config(state='readonly')
+            try:
+                with open(folder_path + '_last_epoch.pkl', 'rb') as f:
+                    last_epoch = pickle.load(f)
+                    epoch_label['text'] = f"Epochs: {last_epoch}/{last_epoch}"
+            except FileNotFoundError:
+                # If the file doesn't exist, set the epoch label to a default value
+                epoch_label['text'] = f"Epochs: 0/0"
     except Exception as e:
         print(f"Error loading model: {e}")
         model_name_label.config(text="Error loading model")
@@ -65,7 +78,14 @@ def load_model_from_file():
 def save_model():
     try:
         file_path = filedialog.asksaveasfilename()
-        model.save(file_path)
+        if file_path:
+            model.save(file_path)
+            with open(file_path + '_last_epoch.pkl', 'wb') as f:
+                try:
+                    last_epoch = epoch_label['text'].split('/')[0]
+                    pickle.dump(int(last_epoch), f)
+                except ValueError:
+                    print("Error: Invalid epoch value")
     except Exception as e:
         print(f"Error saving model: {e}")
 
@@ -73,11 +93,8 @@ def save_model():
 # Define the train_model function
 def train_model():
     try:
-        epochs = int(epochs_entry.get())
         global model
-        model_name = model_name_entry.get()
-        if not model_name:
-            model_name = "untitled"
+        model_name = model_name_label['text'].split(': ')[1]
         if not model:
             model = Sequential()
             model.add(Conv2D(32, (3, 3), activation='relu', input_shape=(28, 28, 1)))
@@ -89,20 +106,17 @@ def train_model():
             model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
         stop_training = threading.Event()
         def train_model_thread(model_name, stop_training):
-            epoch_label['text'] = f"Epochs: 0/{epochs}"
+            epochs = int(epochs_entry.get())
+            epoch_callback = EpochCallback(0, epochs)
             try:
-                for epoch in range(epochs):
-                    if stop_training.is_set():
-                        break
-                    model.fit(x_train, y_train, batch_size=128, epochs=1, validation_data=(x_test, y_test), verbose=0, 
-                              callbacks=[EpochCallback(epoch, epochs)])
-                    progress_bar['value'] = 0
-                    epoch_label['text'] = f"Epochs: {epoch + 1}/{epochs}"
-                    window.update()
-                model_name_label.config(text=f"Model loaded: {model_name}")
-                interrupt_button.pack_forget()  # Remove the interrupt button from the window
+                model.fit(x_train, y_train, batch_size=128, epochs=epochs, validation_data=(x_test, y_test), verbose=0, 
+                          callbacks=[epoch_callback])
+                with open(model_name + '_last_epoch.pkl', 'wb') as f:
+                    pickle.dump(epoch_callback.epoch, f)
             except Exception as e:
                 print(f"Error training model: {e}")
+            finally:
+                interrupt_button.pack_forget()  # Remove the interrupt button from the window
         interrupt_button = tk.Button(window, text="Interrupt Training", command=stop_training.set)
         interrupt_button.pack()
         thread = threading.Thread(target=train_model_thread, args=(model_name, stop_training))
@@ -123,6 +137,10 @@ class EpochCallback(tf.keras.callbacks.Callback):
         progress = (self.batch_count / self.total_batches) * 100
         progress_bar['value'] = progress
         window.update()
+
+    def on_epoch_end(self, epoch, logs=None):
+        self.epoch += 1
+        epoch_label['text'] = f"Epochs: {self.epoch}/{self.epochs}"
 
 
 # Define the test_model function
