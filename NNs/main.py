@@ -104,9 +104,10 @@ def train_model():
             model.add(Dropout(0.2))
             model.add(Dense(10, activation='softmax'))
             model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+        epochs = int(epochs_entry.get())
+        epoch_label['text'] = f"Epochs: 0/{epochs}"  # Update the epoch label
         stop_training = threading.Event()
         def train_model_thread(model_name, stop_training):
-            epochs = int(epochs_entry.get())
             epoch_callback = EpochCallback(0, epochs)
             try:
                 model.fit(x_train, y_train, batch_size=128, epochs=epochs, validation_data=(x_test, y_test), verbose=0, 
@@ -136,11 +137,16 @@ class EpochCallback(tf.keras.callbacks.Callback):
         self.batch_count += 1
         progress = (self.batch_count / self.total_batches) * 100
         progress_bar['value'] = progress
-        window.update()
+        self.update_progress_bar()
+
+    def update_progress_bar(self):
+        window.update_idletasks()  # Update the progress bar
 
     def on_epoch_end(self, epoch, logs=None):
         self.epoch += 1
         epoch_label['text'] = f"Epochs: {self.epoch}/{self.epochs}"
+        progress_bar['value'] = 0  # Reset the progress bar to 0
+        self.update_progress_bar()
 
 
 # Define the test_model function
