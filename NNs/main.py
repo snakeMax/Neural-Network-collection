@@ -15,6 +15,16 @@ import threading
 from keras.layers import BatchNormalization
 import pickle
 
+
+##################################
+
+# DUE TO LIMITATION OF HARDWARE THIS PROGRAM MAY TAKE TIME TO LOAD UP WHEN RUNNING
+
+
+##################################
+
+
+
 # Create the Tkinter window
 window = tk.Tk()
 window.title("MNIST Digit Recognition")
@@ -96,8 +106,29 @@ def save_model():
 def train_model():
     try:
         global model
-        model_name = model_name_label['text'].split(': ')[1]
-        if not model:
+        if model:  # Check if a model is already loaded
+            last_epoch = int(epoch_label['text'].split('/')[0])  # Get the last epoch number
+            epochs = int(epochs_entry.get())
+            total_epochs = last_epoch + epochs
+            epoch_label['text'] = f"Epochs: {last_epoch}/{total_epochs}"  # Update the epoch label
+            stop_training = threading.Event()
+            def train_model_thread(model_name, stop_training):
+                epoch_callback = EpochCallback(last_epoch, total_epochs)
+                try:
+                    model.fit(x_train, y_train, batch_size=128, epochs=epochs, validation_data=(x_test, y_test), verbose=0, 
+                              initial_epoch=last_epoch, callbacks=[epoch_callback], stop_training=stop_training)
+                    with open(model_name + '_last_epoch.pkl', 'wb') as f:
+                        pickle.dump(epoch_callback.epoch, f)
+                except Exception as e:
+                    print(f"Error training model: {e}")
+                finally:
+                    interrupt_button.pack_forget()  # Remove the interrupt button from the window
+            interrupt_button = tk.Button(window, text="Interrupt Training", command=stop_training.set)
+            interrupt_button.pack()
+            thread = threading.Thread(target=train_model_thread, args=(model_name_label['text'].split(': ')[1], stop_training))
+            thread.start()
+        else:
+            # Create a new model and start training from scratch
             model = Sequential()
             model.add(Conv2D(32, (3, 3), activation='relu', input_shape=(28, 28, 1)))
             model.add(MaxPooling2D((2, 2)))
@@ -106,24 +137,24 @@ def train_model():
             model.add(Dropout(0.2))
             model.add(Dense(10, activation='softmax'))
             model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
-        epochs = int(epochs_entry.get())
-        epoch_label['text'] = f"Epochs: 0/{epochs}"  # Update the epoch label
-        stop_training = threading.Event()
-        def train_model_thread(model_name, stop_training):
-            epoch_callback = EpochCallback(0, epochs)
-            try:
-                model.fit(x_train, y_train, batch_size=128, epochs=epochs, validation_data=(x_test, y_test), verbose=0, 
-                          callbacks=[epoch_callback])
-                with open(model_name + '_last_epoch.pkl', 'wb') as f:
-                    pickle.dump(epoch_callback.epoch, f)
-            except Exception as e:
-                print(f"Error training model: {e}")
-            finally:
-                interrupt_button.pack_forget()  # Remove the interrupt button from the window
-        interrupt_button = tk.Button(window, text="Interrupt Training", command=stop_training.set)
-        interrupt_button.pack()
-        thread = threading.Thread(target=train_model_thread, args=(model_name, stop_training))
-        thread.start()
+            epochs = int(epochs_entry.get())
+            epoch_label['text'] = f"Epochs: 0/{epochs}"  # Update the epoch label
+            stop_training = threading.Event()
+            def train_model_thread(model_name, stop_training):
+                epoch_callback = EpochCallback(0, epochs)
+                try:
+                    model.fit(x_train, y_train, batch_size=128, epochs=epochs, validation_data=(x_test, y_test), verbose=0, 
+                              callbacks=[epoch_callback], stop_training=stop_training)
+                    with open(model_name + '_last_epoch.pkl', 'wb') as f:
+                        pickle.dump(epoch_callback.epoch, f)
+                except Exception as e:
+                    print(f"Error training model: {e}")
+                finally:
+                    interrupt_button.pack_forget()  # Remove the interrupt button from the window
+            interrupt_button = tk.Button(window, text="Interrupt Training", command=stop_training.set)
+            interrupt_button.pack()
+            thread = threading.Thread(target=train_model_thread, args=(model_name_label['text'].split(': ')[1], stop_training))
+            thread.start()
     except Exception as e:
         print(f"Error training model: {e}")
 
