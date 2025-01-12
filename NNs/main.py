@@ -65,7 +65,9 @@ def load_model_from_file():
             model_name_entry.insert(0, model_name)
             model_name_entry.config(state='readonly')
             try:
-                with open(folder_path + '_last_epoch.pkl', 'rb') as f:
+                parent_dir = os.path.dirname(folder_path)
+                last_epoch_file = os.path.join(parent_dir, '_last_epoch.pkl')
+                with open(last_epoch_file, 'rb') as f:
                     last_epoch = pickle.load(f)
                     epoch_label['text'] = f"Epochs: {last_epoch}/{last_epoch}"
             except FileNotFoundError:
