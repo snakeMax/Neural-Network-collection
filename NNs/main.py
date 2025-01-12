@@ -83,6 +83,10 @@ def load_model_from_file():
             except FileNotFoundError:
                 # If the file doesn't exist, set the epoch label to a default value
                 epoch_label['text'] = f"Epochs: 0/0"
+            else:
+                # If the file exists, try to load the total epochs from the file name
+                total_epochs = int(os.path.basename(folder_path).split('_')[1])
+                epoch_label['text'] = f"Epochs: {last_epoch}/{total_epochs}"
     except Exception as e:
         print(f"Error loading model: {e}")
         model_name_label.config(text="Error loading model")
@@ -107,16 +111,16 @@ def train_model():
     try:
         global model
         if model:  # Check if a model is already loaded
-            last_epoch = int(epoch_label['text'].split('/')[0])  # Get the last epoch number
+            last_epoch = int(epoch_label['text'].split('/')[0].split(': ')[1])  # Get the last epoch number
             epochs = int(epochs_entry.get())
             total_epochs = last_epoch + epochs
-            epoch_label['text'] = f"Epochs: {last_epoch}/{total_epochs}"  # Update the epoch label
+            epoch_label['text'] = f"{last_epoch}/{total_epochs}"  # Update the epoch label
             stop_training = threading.Event()
             def train_model_thread(model_name, stop_training):
                 epoch_callback = EpochCallback(last_epoch, total_epochs)
                 try:
                     model.fit(x_train, y_train, batch_size=128, epochs=epochs, validation_data=(x_test, y_test), verbose=0, 
-                              initial_epoch=last_epoch, callbacks=[epoch_callback], stop_training=stop_training)
+                              initial_epoch=last_epoch, callbacks=[epoch_callback])
                     with open(model_name + '_last_epoch.pkl', 'wb') as f:
                         pickle.dump(epoch_callback.epoch, f)
                 except Exception as e:
@@ -138,13 +142,13 @@ def train_model():
             model.add(Dense(10, activation='softmax'))
             model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
             epochs = int(epochs_entry.get())
-            epoch_label['text'] = f"Epochs: 0/{epochs}"  # Update the epoch label
+            epoch_label['text'] = f"0/{epochs}"  # Update the epoch label
             stop_training = threading.Event()
             def train_model_thread(model_name, stop_training):
                 epoch_callback = EpochCallback(0, epochs)
                 try:
                     model.fit(x_train, y_train, batch_size=128, epochs=epochs, validation_data=(x_test, y_test), verbose=0, 
-                              callbacks=[epoch_callback], stop_training=stop_training)
+                              callbacks=[epoch_callback])
                     with open(model_name + '_last_epoch.pkl', 'wb') as f:
                         pickle.dump(epoch_callback.epoch, f)
                 except Exception as e:
@@ -174,7 +178,7 @@ class EpochCallback(tf.keras.callbacks.Callback):
 
     def on_epoch_end(self, epoch, logs=None):
         self.epoch += 1
-        epoch_label['text'] = f"Epochs: {self.epoch}/{self.epochs}"
+        epoch_label['text'] = f"{self.epoch}/{self.epochs}"
         progress_bar['value'] = 0  # Reset the progress bar to 0
         progress_bar.update_idletasks()  # Update the progress bar
         self.batch_count = 0  # Reset the batch count
